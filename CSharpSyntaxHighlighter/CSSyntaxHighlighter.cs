@@ -220,10 +220,11 @@ namespace CSharpSyntaxHighlighter
         }
         private static string EscapeRTF(string s)
         {
-            return s.Replace("\n", "\\par\n")
+            return s.Replace("\\", "\\\\")
+                    .Replace("\n", "\\par\n")
                     .Replace("{", "\\{")
                     .Replace("}", "\\}")
-                    .Replace("\r","");
+                    .Replace("\r", "");
         }
         private static string[] keywords = new string[] 
         { 
