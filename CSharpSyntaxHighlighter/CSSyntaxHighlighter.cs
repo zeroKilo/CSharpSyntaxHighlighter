@@ -25,7 +25,7 @@ namespace CSharpSyntaxHighlighter
         {
             int selpos = box.SelectionStart;
             int lnr = box.GetLineFromCharIndex(selpos);
-            if (lnr < 2)
+            if (lnr < 1)
                 return;
             StringReader sr = new StringReader(box.Text);
             List<string> lines = new List<string>();
@@ -43,7 +43,10 @@ namespace CSharpSyntaxHighlighter
                     break;
                 pos++;
             }
-            lines[lnr] = sb.ToString() + lines[lnr];
+            if (lnr == lines.Count)
+                lines.Add(sb.ToString());
+            else
+                lines[lnr] = sb.ToString() + lines[lnr];
             sb = new StringBuilder();
             foreach (string s in lines)
                 sb.AppendLine(s);
