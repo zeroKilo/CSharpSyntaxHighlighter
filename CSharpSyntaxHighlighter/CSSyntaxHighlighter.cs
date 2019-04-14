@@ -137,7 +137,13 @@ namespace CSharpSyntaxHighlighter
                     result.Add(t);
                     last = pos;
                     pos++;
-                    while (pos < s.Length && s[pos++] != '"') ;
+                    while (pos < s.Length - 1)
+                    {
+                        if (s[pos - 1] != '\\' && s[pos] == '"')
+                            break;
+                        pos++;
+                    }
+                    pos++;
                     t = new Token(Token.TokenType.quote);
                     t.text = s.Substring(last, pos - last);
                     result.Add(t);
