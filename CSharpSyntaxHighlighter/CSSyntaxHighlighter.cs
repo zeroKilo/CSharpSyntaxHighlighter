@@ -5,24 +5,49 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace CSharpSyntaxHighlighter
 {
     public static class CSSyntaxHighlighter
     {
-        public static void Apply(RichTextBox box)
+        [DllImport("user32.dll")]
+        private static extern bool LockWindowUpdate(IntPtr hWndLock);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetScrollPos(IntPtr hWnd, int nBar);
+        [DllImport("User32.dll")]
+        private extern static int SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        public static void Apply(RichTextBox box, int start = -1, int end = -1)
         {
+            LockWindowUpdate(box.Handle);
+            int scrollY = GetScrollPos((IntPtr)box.Handle, 1) << 16;
             int pos = box.SelectionStart;
-            List<Token> result = FindComments(box.Text);
+            string s = box.Text;
+            string before = "";
+            string after = "";
+            if (start >= 0 && end >= 0)
+            {
+                if (start > 0)
+                    before = s.Substring(0, start);
+                if (end < s.Length)
+                    after = s.Substring(end, s.Length - end);
+                s = s.Substring(start, end - start);
+            }
+            List<Token> result = FindComments(s);
             result = FindAllQuotes(result);
             result = FindAllKeyWords(result);
-            box.Rtf = MakeRTF(result);
+            box.Rtf = MakeRTF(result, before, after);
             box.SelectionStart = pos;
+            uint wParam = 0x4 | (uint)scrollY;
+            SendMessage(box.Handle, 0x0115, new IntPtr(wParam), new IntPtr(0));
+            LockWindowUpdate(IntPtr.Zero);
         }
-
         public static void HandleNewLine(RichTextBox box)
         {
+            LockWindowUpdate(box.Handle);
+            int scrollY = GetScrollPos((IntPtr)box.Handle, 1) << 16;
             int selpos = box.SelectionStart;
             int lnr = box.GetLineFromCharIndex(selpos);
             if (lnr < 1)
@@ -52,6 +77,79 @@ namespace CSharpSyntaxHighlighter
                 sb.AppendLine(s);
             box.Text = sb.ToString();
             box.SelectionStart = selpos + pos;
+            uint wParam = 0x4 | (uint)scrollY;
+            SendMessage(box.Handle, 0x0115, new IntPtr(wParam), new IntPtr(0));
+            LockWindowUpdate(IntPtr.Zero);
+        }
+        public static string AutoIndent(string text)
+        {
+            StringReader sr;
+            StringBuilder sb = new StringBuilder();
+            List<Token> result = FindComments(text);
+            result = FindAllQuotes(result);
+            int depth = 0;
+            string line = "";
+            bool skipNext = false;
+            foreach (Token t in result)
+                if (t.type == Token.TokenType.block)
+                {
+                    string s = t.text;
+                    int pos = 0;
+                    if (skipNext)
+                    {
+                        skipNext = false;
+                        pos = SkipEmpty(s, pos);
+                    }
+                    while (pos < s.Length)
+                    {
+                        switch (s[pos])
+                        {
+                            case '\n':
+                                sb.Append(s[pos]);
+                                pos = SkipEmpty(s, pos + 1);
+                                sb.Append(MakeTabs(depth));
+                                break;
+                            case '{':
+                                sb.Append("\n" + MakeTabs(depth) + s[pos] + "\n");
+                                pos = SkipEmpty(s, pos + 1);
+                                depth++;
+                                sb.Append(MakeTabs(depth));
+                                break;
+                            case '}':
+                                if (depth > 0)
+                                    depth--;
+                                sb.Append("\n" + MakeTabs(depth) + s[pos] + "\n");
+                                pos = SkipEmpty(s, pos + 1);
+                                sb.Append(MakeTabs(depth));
+                                break;
+                            default:
+                                sb.Append(s[pos]);
+                                pos++;
+                                break;
+                        }
+                    }
+                }
+                else if (t.type == Token.TokenType.linecomment)
+                {
+                    sb.Append(t.text + MakeTabs(depth));
+                    skipNext = true;
+                }
+                else if (t.type == Token.TokenType.blockcomment)
+                {
+                    sb.Append("\n");
+                    sr = new StringReader(t.text);
+                    while ((line = sr.ReadLine()) != null)
+                        sb.Append(MakeTabs(depth) + line.Trim() + "\n");
+                    skipNext = true;
+                }
+                else
+                    sb.Append(t.text);
+            sr = new StringReader(sb.ToString());
+            sb = new StringBuilder();
+            while ((line = sr.ReadLine()) != null)
+                if (line.Trim() != "")
+                    sb.Append(line + "\n");
+            return sb.ToString();
         }
 
         private static List<Token> FindComments(string s)
@@ -77,7 +175,7 @@ namespace CSharpSyntaxHighlighter
                             t.text = s.Substring(last, pos - last);
                             result.Add(t);
                         }
-                        if (s[pos + 1] == '*')
+                        else if (s[pos + 1] == '*')
                         {
                             while (pos++ < s.Length - 1)
                                 if (s[pos] == '*' && s[pos + 1] == '/')
@@ -199,12 +297,12 @@ namespace CSharpSyntaxHighlighter
                 }
             return result;
         }
-        private static string MakeRTF(List<Token> list)
+        private static string MakeRTF(List<Token> list, string before = "", string after = "")
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine(@"{\rtf1\ansi\ansicpg1252\deff0\deflang1031{\fonttbl{\f0\fnil Consolas;}{\f1\fnil\fcharset0 Consolas;}}");
             sb.AppendLine(@"{\colortbl ;\red0\green0\blue0;\red255\green0\blue0;\red0\green128\blue0;\red0\green0\blue255;}");
-            sb.AppendLine(@"\viewkind4\uc1\pard\f0\fs20");
+            sb.AppendLine(@"\viewkind4\uc1\pard\f0\fs20\cf1 " + EscapeRTF(before));
             foreach(Token t in list)
                 switch (t.type)
                 {
@@ -222,6 +320,7 @@ namespace CSharpSyntaxHighlighter
                         sb.Append("\\cf1 " + EscapeRTF(t.text));
                         break;
                 }
+            sb.Append("\\cf1 " + EscapeRTF(after));
             return sb.ToString();
         }
         private static string EscapeRTF(string s)
@@ -231,6 +330,24 @@ namespace CSharpSyntaxHighlighter
                     .Replace("{", "\\{")
                     .Replace("}", "\\}")
                     .Replace("\r", "");
+        }
+        private static string MakeTabs(int count)
+        {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < count; i++)
+                sb.Append('\t');
+            return sb.ToString();
+        }
+        private static int SkipEmpty(string s, int start)
+        {
+            int pos = start;
+            while (pos < s.Length)
+            {
+                if (s[pos] != ' ' && s[pos] != '\t')
+                    break;
+                pos++;
+            }
+            return pos;
         }
         private static string[] keywords = new string[] 
         { 

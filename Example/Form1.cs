@@ -42,5 +42,13 @@ namespace Example
                 preventUpdate = false;
             }
         }
+
+        private void autoIndentToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            preventUpdate = true;
+            rtb1.Text = CSSyntaxHighlighter.AutoIndent(rtb1.Text);
+            CSSyntaxHighlighter.Apply(rtb1);
+            preventUpdate = false;
+        }
     }
 }
