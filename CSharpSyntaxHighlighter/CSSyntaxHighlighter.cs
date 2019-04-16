@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,7 +11,7 @@ using System.Text.RegularExpressions;
 
 namespace CSharpSyntaxHighlighter
 {
-    public static class CSSyntaxHighlighter
+    public class CSSyntaxHighlighter : SyntaxHighlighter
     {
         [DllImport("user32.dll")]
         private static extern bool LockWindowUpdate(IntPtr hWndLock);
@@ -19,7 +20,9 @@ namespace CSharpSyntaxHighlighter
         [DllImport("User32.dll")]
         private extern static int SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-        public static void Apply(RichTextBox box, int start = -1, int end = -1)
+        private StringBuilder sb = new StringBuilder();
+        private StringReader sr;
+        public override void Apply(RichTextBox box, int start = -1, int end = -1)
         {
             LockWindowUpdate(box.Handle);
             int scrollY = GetScrollPos((IntPtr)box.Handle, 1) << 16;
@@ -44,7 +47,7 @@ namespace CSharpSyntaxHighlighter
             SendMessage(box.Handle, 0x0115, new IntPtr(wParam), new IntPtr(0));
             LockWindowUpdate(IntPtr.Zero);
         }
-        public static void HandleNewLine(RichTextBox box)
+        public override void HandleNewLine(RichTextBox box)
         {
             LockWindowUpdate(box.Handle);
             int scrollY = GetScrollPos((IntPtr)box.Handle, 1) << 16;
@@ -52,12 +55,12 @@ namespace CSharpSyntaxHighlighter
             int lnr = box.GetLineFromCharIndex(selpos);
             if (lnr < 1)
                 return;
-            StringReader sr = new StringReader(box.Text);
+            sr = new StringReader(box.Text);
             List<string> lines = new List<string>();
             string line = "";
             while ((line = sr.ReadLine()) != null)
                 lines.Add(line);
-            StringBuilder sb = new StringBuilder();
+            sb.Clear();
             int pos = 0;
             line = lines[lnr - 1];
             while (pos < line.Length)
@@ -72,7 +75,7 @@ namespace CSharpSyntaxHighlighter
                 lines.Add(sb.ToString());
             else
                 lines[lnr] = sb.ToString() + lines[lnr];
-            sb = new StringBuilder();
+            sb.Clear();
             foreach (string s in lines)
                 sb.AppendLine(s);
             box.Text = sb.ToString();
@@ -81,10 +84,9 @@ namespace CSharpSyntaxHighlighter
             SendMessage(box.Handle, 0x0115, new IntPtr(wParam), new IntPtr(0));
             LockWindowUpdate(IntPtr.Zero);
         }
-        public static string AutoIndent(string text)
+        public override string AutoIndent(string text)
         {
-            StringReader sr;
-            StringBuilder sb = new StringBuilder();
+            sb.Clear();
             List<Token> result = FindComments(text);
             result = FindAllQuotes(result);
             int depth = 0;
@@ -145,14 +147,14 @@ namespace CSharpSyntaxHighlighter
                 else
                     sb.Append(t.text);
             sr = new StringReader(sb.ToString());
-            sb = new StringBuilder();
+            sb.Clear();
             while ((line = sr.ReadLine()) != null)
                 if (line.Trim() != "")
                     sb.Append(line + "\n");
             return sb.ToString();
         }
 
-        private static List<Token> FindComments(string s)
+        private List<Token> FindComments(string s)
         {
             List<Token> result = new List<Token>();
             int pos = 0, last = 0;
@@ -202,7 +204,7 @@ namespace CSharpSyntaxHighlighter
             }
             return result;
         }
-        private static List<Token> FindAllQuotes(List<Token> list)
+        private List<Token> FindAllQuotes(List<Token> list)
         {
             List<Token> result = new List<Token>();
             foreach (Token t in list)
@@ -212,7 +214,7 @@ namespace CSharpSyntaxHighlighter
                     result.Add(t);
             return result;
         }
-        private static List<Token> FindAllKeyWords(List<Token> list)
+        private List<Token> FindAllKeyWords(List<Token> list)
         {
             List<Token> result = new List<Token>();
             foreach (Token t in list)
@@ -222,7 +224,7 @@ namespace CSharpSyntaxHighlighter
                     result.Add(t);
             return result;
         }
-        private static List<Token> FindQuotes(string s)
+        private List<Token> FindQuotes(string s)
         {
             List<Token> result = new List<Token>();
             int pos = 0, last = 0;
@@ -258,7 +260,7 @@ namespace CSharpSyntaxHighlighter
             }
             return result;
         }
-        private static List<Token> FindKeyWords(string s)
+        private List<Token> FindKeyWords(string s)
         {
             List<Token> result = new List<Token>();
             List<string> temp = new List<string>();
@@ -297,11 +299,14 @@ namespace CSharpSyntaxHighlighter
                 }
             return result;
         }
-        private static string MakeRTF(List<Token> list, string before = "", string after = "")
+        private string MakeRTF(List<Token> list, string before = "", string after = "")
         {
-            StringBuilder sb = new StringBuilder();
+            sb.Clear();
             sb.AppendLine(@"{\rtf1\ansi\ansicpg1252\deff0\deflang1031{\fonttbl{\f0\fnil Consolas;}{\f1\fnil\fcharset0 Consolas;}}");
-            sb.AppendLine(@"{\colortbl ;\red0\green0\blue0;\red255\green0\blue0;\red0\green128\blue0;\red0\green0\blue255;}");
+            sb.Append(@"{\colortbl ;");
+            foreach (Color c in tokenColors)
+                sb.AppendFormat("\\red{0}\\green{1}\\blue{2};", c.R, c.G, c.B);
+            sb.AppendLine("}");
             sb.AppendLine(@"\viewkind4\uc1\pard\f0\fs20\cf1 " + EscapeRTF(before));
             foreach(Token t in list)
                 switch (t.type)
@@ -323,7 +328,7 @@ namespace CSharpSyntaxHighlighter
             sb.Append("\\cf1 " + EscapeRTF(after));
             return sb.ToString();
         }
-        private static string EscapeRTF(string s)
+        private string EscapeRTF(string s)
         {
             return s.Replace("\\", "\\\\")
                     .Replace("\n", "\\par\n")
@@ -331,14 +336,14 @@ namespace CSharpSyntaxHighlighter
                     .Replace("}", "\\}")
                     .Replace("\r", "");
         }
-        private static string MakeTabs(int count)
+        private string MakeTabs(int count)
         {
-            StringBuilder sb = new StringBuilder();
+            sb.Clear();
             for (int i = 0; i < count; i++)
                 sb.Append('\t');
             return sb.ToString();
         }
-        private static int SkipEmpty(string s, int start)
+        private int SkipEmpty(string s, int start)
         {
             int pos = start;
             while (pos < s.Length)
@@ -349,9 +354,16 @@ namespace CSharpSyntaxHighlighter
             }
             return pos;
         }
-        private static string[] keywords = new string[] 
+        public string[] keywords = new string[] 
         { 
             "abstract", "add", "alias", "as", "ascending", "async", "await", "base", "bool", "break", "by", "byte", "case", "catch", "char", "checked", "class", "const", "continue", "decimal", "default", "delegate", "descending", "do", "double", "dynamic", "else", "enum", "equals", "event", "explicit", "extern", "false", "finally", "fixed", "float", "for", "foreach", "from", "get", "global", "goto", "group", "if", "implicit", "in", "int", "interface", "internal", "into", "is", "join", "let", "lock", "long", "nameof", "namespace", "new", "null", "object", "on", "operator", "orderby", "out", "override", "params", "partial", "private", "protected", "public", "readonly", "ref", "remove", "return", "sbyte", "sealed", "select", "set", "short", "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "value", "var", "virtual", "void", "volatile", "when", "where", "while", "yield"
+        };
+        public Color[] tokenColors = new Color[]
+        {
+            Color.Black,        //generic
+            Color.Red,          //string/quote
+            Color.DarkGreen,    //comment
+            Color.Blue          //keyword
         };
     }
 }

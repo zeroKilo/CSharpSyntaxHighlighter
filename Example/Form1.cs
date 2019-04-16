@@ -14,11 +14,12 @@ namespace Example
     public partial class Form1 : Form
     {
         bool preventUpdate = false;
+        CSSyntaxHighlighter hl = new CSSyntaxHighlighter();
         public Form1()
         {
             InitializeComponent();
             preventUpdate = true;
-            CSSyntaxHighlighter.Apply(rtb1);
+            hl.Apply(rtb1);
             preventUpdate = false;
 
         }
@@ -28,7 +29,7 @@ namespace Example
             if (preventUpdate)
                 return;
             preventUpdate = true;
-            CSSyntaxHighlighter.Apply(rtb1);
+            hl.Apply(rtb1);
             preventUpdate = false;
         }
 
@@ -37,8 +38,8 @@ namespace Example
             if (e.KeyChar == 13)
             {
                 preventUpdate = true;
-                CSSyntaxHighlighter.HandleNewLine(rtb1);
-                CSSyntaxHighlighter.Apply(rtb1);
+                hl.HandleNewLine(rtb1);
+                hl.Apply(rtb1);
                 preventUpdate = false;
             }
         }
@@ -46,8 +47,8 @@ namespace Example
         private void autoIndentToolStripMenuItem_Click(object sender, EventArgs e)
         {
             preventUpdate = true;
-            rtb1.Text = CSSyntaxHighlighter.AutoIndent(rtb1.Text);
-            CSSyntaxHighlighter.Apply(rtb1);
+            rtb1.Text = hl.AutoIndent(rtb1.Text);
+            hl.Apply(rtb1);
             preventUpdate = false;
         }
     }
